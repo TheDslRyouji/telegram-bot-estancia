@@ -1,10 +1,28 @@
 import os
+import sys
 import json
 import asyncio
 import nest_asyncio
+import psutil
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+# ============================================================
+# 🛡️ Protección: evitar que el bot se ejecute dos veces
+# ============================================================
+def check_already_running():
+    current_pid = os.getpid()
+    script_name = os.path.basename(__file__)
+    for proc in psutil.process_iter(['pid', 'cmdline']):
+        try:
+            if proc.info['pid'] != current_pid and proc.info['cmdline'] and script_name in " ".join(proc.info['cmdline']):
+                print(f"⚠️ Ya hay otra instancia del bot ejecutándose (PID {proc.info['pid']}). Cerrando esta...")
+                sys.exit()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+check_already_running()
 
 # ============================================================
 # ⚙️ Cargar variables de entorno (.env)
@@ -20,7 +38,6 @@ if not TOKEN:
 # 🗂️ Archivo donde se guardan los datos de usuarios
 # ============================================================
 ARCHIVO_DATOS = "usuarios.json"
-
 
 # ============================================================
 # 🧠 Funciones de carga y guardado de datos
@@ -138,4 +155,3 @@ if __name__ == "__main__":
     except RuntimeError:
         print("🔄 Reintentando con nuevo loop...")
         asyncio.run(main())
-
