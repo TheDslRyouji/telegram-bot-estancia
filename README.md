@@ -1,26 +1,35 @@
-# 🤖 Bot de Estancia en Telegram
+# 🤖 Telegram Bot — Control de Estancia y Expulsión Automática
 
-Un bot en **Python** que controla la **estancia de los usuarios en grupos de Telegram**.  
-Permite definir un tiempo límite (en días, semanas o meses) para cada usuario y los **expulsa automáticamente** cuando se cumple el plazo.
-
----
-
-## ⚙️ Características principales
-
-✅ Registra automáticamente a los usuarios y la fecha de entrada.  
-✅ Permite configurar el tiempo límite por usuario con `/tiempo <días>`.  
-✅ Guarda los datos en un archivo JSON (fácil de editar o respaldar).  
-✅ Revisa automáticamente cada hora quién debe salir.  
-✅ Totalmente personalizable y ampliable (botones, recordatorios, etc.).
+Bot de Telegram creado para **controlar el tiempo de estancia de los usuarios en grupos**.  
+Permite registrar usuarios por segundos, minutos, horas o días, y los expulsa automáticamente cuando su tiempo expira.
 
 ---
 
-## 🧠 Tecnologías utilizadas
+## 🧠 Funcionalidades principales
 
-- **Python 3.10+**
-- **python-telegram-bot**
-- **JSON** para persistencia de datos
+✅ Registrar usuarios con tiempo personalizado  
+✅ Editar tiempo de estancia  
+✅ Ver lista de usuarios y tiempo restante  
+✅ Expulsar automáticamente a los que superan su tiempo  
+✅ Soporte para segundos, minutos, horas y días  
+✅ Compatible con grupos y chats privados  
+✅ Compatible con Replit (mantiene ejecución continua)
 
 ---
 
-## 📦 Instalación
+## 💬 Comandos disponibles
+
+| Comando | Descripción | Ejemplo |
+|----------|--------------|---------|
+| `/start` | Muestra mensaje de bienvenida | `/start` |
+| `/tiempo <duración> [nombre]` | Registra un usuario y tiempo | `/tiempo 5m Juan` |
+| `/editar <duración> <nombre>` | Edita el tiempo de un usuario existente | `/editar 2h Juan` |
+| `/ver` | Muestra todos los usuarios registrados y su tiempo restante | `/ver` |
+
+🕒 **Unidades disponibles:**
+- `s` → segundos  
+- `m` → minutos  
+- `h` → horas  
+- `d` → días  
+
+📘 Ejemplos:
