@@ -39,6 +39,7 @@ if not TOKEN:
 # ============================================================
 ARCHIVO_DATOS = "usuarios.json"
 
+
 # ============================================================
 # 🧠 Funciones de carga y guardado de datos
 # ============================================================
@@ -49,18 +50,22 @@ def cargar_datos():
     except FileNotFoundError:
         return {}
 
-
 def guardar_datos(datos):
     with open(ARCHIVO_DATOS, "w") as f:
         json.dump(datos, f, indent=4)
 
+def formato_tiempo(segundos):
+    horas = segundos // 3600
+    minutos = (segundos % 3600) // 60
+    segs = segundos % 60
+    return f"{horas}h {minutos}m {segs}s"
+
 
 # ============================================================
-# 👋 Comando /start — Registrar usuario
+# 👋 /start — Registrar usuario
 # ============================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
-        print("⚠️ Se recibió un evento sin mensaje en /start")
         return
 
     user = update.effective_user
@@ -72,34 +77,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"👋 ¡Hola {user.first_name}! Bienvenido al bot de estancia.\n"
-        f"Usa /tiempo para ver tu tiempo o /editar para modificarlo."
+        "Usa /tiempo para ver tu tiempo o /editar para modificarlo.\n"
+        "Ejemplo: /editar 1h30m20s o /editar 45m o /editar 120s"
     )
 
 
 # ============================================================
-# ⏱️ Comando /tiempo — Mostrar tiempo de usuario
+# ⏱️ /tiempo — Mostrar tiempo
 # ============================================================
 async def tiempo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
-        print("⚠️ Se recibió un evento sin mensaje en /tiempo")
         return
 
     user_id = str(update.effective_user.id)
     datos = cargar_datos()
 
     if user_id in datos:
-        tiempo = datos[user_id]["tiempo"]
-        await update.message.reply_text(f"⏱ Tu tiempo actual es de {tiempo} minutos.")
+        total_segundos = datos[user_id]["tiempo"]
+        tiempo_legible = formato_tiempo(total_segundos)
+        await update.message.reply_text(f"⏱ Tu tiempo actual es de {tiempo_legible}.")
     else:
         await update.message.reply_text("❌ No estás registrado aún. Usa /start primero.")
 
 
 # ============================================================
-# ✏️ Comando /editar — Modificar tiempo de estancia
+# ✏️ /editar — Modificar tiempo (h, m o s)
 # ============================================================
 async def editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
-        print("⚠️ Se recibió un evento sin mensaje en /editar")
         return
 
     user_id = str(update.effective_user.id)
@@ -109,27 +114,51 @@ async def editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No estás registrado. Usa /start primero.")
         return
 
-    if len(context.args) == 0:
-        await update.message.reply_text("✏️ Usa el comando así: /editar 30 (para 30 minutos)")
+    if not context.args:
+        await update.message.reply_text("✏️ Usa el comando así: /editar 1h30m o /editar 45m o /editar 90s")
         return
 
+    entrada = context.args[0].lower()
+
+    # Convertir formato flexible a segundos
     try:
-        nuevo_tiempo = int(context.args[0])
-        datos[user_id]["tiempo"] = nuevo_tiempo
+        horas = minutos = segundos = 0
+        num = ""
+        for c in entrada:
+            if c.isdigit():
+                num += c
+            elif c == 'h':
+                horas = int(num)
+                num = ""
+            elif c == 'm':
+                minutos = int(num)
+                num = ""
+            elif c == 's':
+                segundos = int(num)
+                num = ""
+        total_segundos = horas * 3600 + minutos * 60 + segundos
+
+        if total_segundos <= 0:
+            await update.message.reply_text("⚠️ Ingresa un valor válido mayor que 0.")
+            return
+
+        datos[user_id]["tiempo"] = total_segundos
         guardar_datos(datos)
-        await update.message.reply_text(f"✅ Tiempo actualizado a {nuevo_tiempo} minutos.")
-    except ValueError:
-        await update.message.reply_text("⚠️ Por favor ingresa un número válido.")
+
+        await update.message.reply_text(
+            f"✅ Tiempo actualizado a {formato_tiempo(total_segundos)}."
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error al procesar el tiempo: {e}")
 
 
 # ============================================================
-# 🚀 MAIN — Inicializa el bot
+# 🚀 MAIN
 # ============================================================
 async def main():
     print("✅ Iniciando bot de Telegram...")
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Registrar comandos
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tiempo", tiempo))
     app.add_handler(CommandHandler("editar", editar))
@@ -139,7 +168,7 @@ async def main():
 
 
 # ============================================================
-# 🧩 Ejecutar con compatibilidad para Python 3.12 / PM2
+# 🧩 Ejecutar
 # ============================================================
 if __name__ == "__main__":
     nest_asyncio.apply()
@@ -155,3 +184,4 @@ if __name__ == "__main__":
     except RuntimeError:
         print("🔄 Reintentando con nuevo loop...")
         asyncio.run(main())
+
