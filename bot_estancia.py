@@ -25,10 +25,9 @@ def guardar_datos(datos):
 
 # ======== FUNCIÓN AUXILIAR ========
 def convertir_tiempo(valor: str) -> datetime.timedelta:
-    """Convierte texto como 10s, 5m, 2h, 3d a un timedelta."""
+    """Convierte texto como 10s, 5m, 2h, 3d a timedelta."""
     unidad = valor[-1].lower()
     cantidad = int(valor[:-1])
-
     if unidad == "s":
         return datetime.timedelta(seconds=cantidad)
     elif unidad == "m":
@@ -73,7 +72,8 @@ async def tiempo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     datos[str(usuario.id)] = {
         "nombre": nombre,
         "fecha_ingreso": datetime.datetime.now().isoformat(),
-        "duracion_segundos": delta.total_seconds()
+        "duracion_segundos": delta.total_seconds(),
+        "chat_id": chat_id
     }
     guardar_datos(datos)
 
@@ -132,7 +132,7 @@ async def revisar_usuarios(context: ContextTypes.DEFAULT_TYPE):
     ahora = datetime.datetime.now()
     usuarios_a_eliminar = []
 
-    for user_id, info in datos.items():
+    for user_id, info in list(datos.items()):
         fecha = datetime.datetime.fromisoformat(info["fecha_ingreso"])
         limite = fecha + datetime.timedelta(seconds=info["duracion_segundos"])
         if ahora >= limite:
@@ -140,12 +140,19 @@ async def revisar_usuarios(context: ContextTypes.DEFAULT_TYPE):
 
     for user_id in usuarios_a_eliminar:
         try:
-            if "chat_id" in context.bot_data:
-                chat_id = context.bot_data["chat_id"]
-                await context.bot.send_message(chat_id, f"⏰ El tiempo de *{datos[user_id]['nombre']}* ha expirado.", parse_mode="Markdown")
+            chat_id = datos[user_id].get("chat_id", context.bot_data.get("chat_id"))
+            nombre = datos[user_id]["nombre"]
+            await context.bot.send_message(chat_id, f"⏰ El tiempo de *{nombre}* ha expirado.", parse_mode="Markdown")
+
+            # 🚨 Expulsar al usuario del grupo
+            await context.bot.ban_chat_member(chat_id, int(user_id))
+            await asyncio.sleep(1)
+            await context.bot.unban_chat_member(chat_id, int(user_id))  # lo desbanea para permitir que vuelva si desea
+
+            print(f"✅ Usuario expulsado: {nombre} ({user_id})")
             del datos[user_id]
         except Exception as e:
-            print(f"❌ Error al eliminar usuario {user_id}: {e}")
+            print(f"❌ Error al expulsar {user_id}: {e}")
 
     if usuarios_a_eliminar:
         guardar_datos(datos)
@@ -153,7 +160,7 @@ async def revisar_usuarios(context: ContextTypes.DEFAULT_TYPE):
 # ======== FUNCIÓN PRINCIPAL ========
 async def main():
     if not TOKEN:
-        print("❌ ERROR: No se encontró el token BOT_TOKEN. Configúralo en los Secrets o variables de entorno.")
+        print("❌ ERROR: No se encontró el token BOT_TOKEN.")
         return
 
     app = ApplicationBuilder().token(TOKEN).build()
@@ -162,12 +169,13 @@ async def main():
     app.add_handler(CommandHandler("editar", editar))
     app.add_handler(CommandHandler("ver", ver))
 
+    # Revisa cada 10 segundos (ajústalo a 3600 = cada hora)
     job_queue = app.job_queue
-    job_queue.run_repeating(revisar_usuarios, interval=5, first=10)  # revisa cada 5 segundos (para pruebas)
+    job_queue.run_repeating(revisar_usuarios, interval=10, first=10)
 
     print("🤖 Bot iniciado correctamente...")
+    print("🧹 Revisión automática de usuarios activa.")
     await app.run_polling()
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(main())
-
