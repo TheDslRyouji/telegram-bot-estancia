@@ -1,11 +1,12 @@
 import json
 import datetime
 import asyncio
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # ======== CONFIGURACIÓN ========
-TOKEN = "AQUI_TU_TOKEN_DEL_BOT"
+TOKEN = os.getenv("BOT_TOKEN")   # 🔐 Se obtiene desde Secrets en Replit o variable de entorno
 ARCHIVO_DATOS = "usuarios.json"
 
 # ======== FUNCIONES DE GUARDADO ========
@@ -75,10 +76,14 @@ async def revisar_usuarios(app):
 
 # ======== FUNCIÓN PRINCIPAL ========
 async def main():
+    if not TOKEN:
+        print("❌ ERROR: No se encontró el token BOT_TOKEN. Configúralo en los Secrets o variables de entorno.")
+        return
+
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("tiempo", tiempo))
-    print("🤖 Bot iniciado...")
+    print("🤖 Bot iniciado correctamente...")
     await app.run_polling()
 
 if __name__ == "__main__":
