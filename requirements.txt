@@ -1,4 +1,4 @@
 python-telegram-bot==20.3
-python-dotenv
-nest_asyncio
-psutil
+python-dotenv==1.0.0
+psutil==5.9.5
+nest-asyncio==1.5.8
