@@ -46,15 +46,18 @@ if not TOKEN:
 # ============================================================
 def cargar_datos():
     try:
+        if not os.path.exists(ARCHIVO_DATOS):
+            with open(ARCHIVO_DATOS, "w", encoding="utf-8") as f:
+                json.dump({"admins": [ADMIN_ID] if ADMIN_ID else [], "usuarios": {}}, f)
         with open(ARCHIVO_DATOS, "r", encoding="utf-8") as f:
             data = json.load(f)
-            # normalizar estructura si faltan claves
             if "admins" not in data:
                 data["admins"] = [ADMIN_ID] if ADMIN_ID else []
             if "usuarios" not in data:
                 data["usuarios"] = {}
             return data
-    except FileNotFoundError:
+    except Exception as e:
+        print(f"❌ Error cargando datos: {e}")
         return {"admins": [ADMIN_ID] if ADMIN_ID else [], "usuarios": {}}
 
 def guardar_datos(datos):
@@ -107,12 +110,13 @@ def solo_admin(func):
         if not update.effective_user:
             return
         if not es_admin(str(update.effective_user.id)):
-            return  # silencioso
+            await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+            return
         return await func(update, context)
     return wrapper
 
 # ============================================================
-# ⏱️ /tg — Mostrar tiempo (privado al usuario)
+# ⏱️ /tg — Mostrar tiempo
 # ============================================================
 async def tg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -124,11 +128,10 @@ async def tg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         guardar_datos(datos)
 
     tiempo_seg = usuarios[str(user.id)]["tiempo"]
-    # siempre responder en privado
     await context.bot.send_message(chat_id=user.id, text=f"⏱ Tu tiempo actual es: {formato_tiempo(tiempo_seg)}")
 
 # ============================================================
-# 📋 /lista — Solo admins, con colores (verde→naranja) y admins en azul
+# 📋 /lista — Solo admins
 # ============================================================
 @solo_admin
 async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,155 +140,20 @@ async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admins = set(datos.get("admins", []))
 
     if not usuarios:
-        await context.bot.send_message(chat_id=update.effective_user.id, text="📂 No hay usuarios.")
+        await context.bot.send_message(chat_id=update.effective_user.id, text="📂 No hay usuarios registrados.")
         return
 
-    # 90 días como referencia para el degradado
-    tiempo_ref = 90 * 24 * 3600
-
-    def color_gradiente(segundos):
-        # ratio 0..1
-        ratio = max(0, min(segundos / tiempo_ref, 1))
-        # Verde (0,204,102) -> Naranja (217,140,51)
-        r = int(0 + (217 - 0) * (1 - ratio))
-        g = int(204 * ratio + 140 * (1 - ratio))
-        b = int(102 * ratio + 51 * (1 - ratio))
-        return f"#{r:02x}{g:02x}{b:02x}"
-
-    # ordenar por tiempo desc
-    items = sorted(usuarios.items(), key=lambda kv: kv[1].get("tiempo", 0), reverse=True)
-
-    mensaje = "<b>📜 Lista de usuarios y tiempos</b>\n\n"
-    for uid, info in items:
+    mensaje = "<b>📜 Lista de usuarios</b>\n\n"
+    for uid, info in usuarios.items():
         nombre = info.get("nombre", "Desconocido")
         t = int(info.get("tiempo", 0))
         ttxt = formato_tiempo(t)
-
         if uid in admins:
-            # Admin en azul y negrita
-            mensaje += f"👑 <b><span style='color:#00aaff'>{nombre}</span></b> ({uid}) → {ttxt}\n"
+            mensaje += f"👑 <b>{nombre}</b> ({uid}) → {ttxt}\n"
         else:
-            col = color_gradiente(t)
-            mensaje += f"👤 <span style='color:{col}'>{nombre}</span> ({uid}) → {ttxt}\n"
+            mensaje += f"👤 {nombre} ({uid}) → {ttxt}\n"
 
     await context.bot.send_message(chat_id=update.effective_user.id, text=mensaje, parse_mode="HTML")
-
-# ============================================================
-# 🔐 /sudosu — flujo seguro (ID + contraseña + valor), redirige a privado si se lanza en grupo
-# ============================================================
-ASK_ID, ASK_PASS, ASK_VAL = range(3)
-
-async def sudosu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    user = update.effective_user
-
-    # Solo admin principal puede iniciar
-    if str(user.id) != str(ADMIN_ID):
-        return  # silencioso
-
-    # Si se invoca en grupo/canal, redirigir a privado
-    if chat.type != "private":
-        try:
-            await context.bot.send_message(
-                chat_id=user.id,
-                text="🔒 Has usado /sudosu en un grupo. Continúa aquí en privado."
-            )
-            try:
-                await update.message.delete()
-            except:
-                pass
-        except:
-            # Si el bot no puede escribir en tu privado
-            await update.message.reply_text("📩 Primero abre un chat privado conmigo para comandos seguros.")
-        return ConversationHandler.END
-
-    await update.message.reply_text("🔒 Modo sudosu: escribe tu ID (solo número).")
-    return ASK_ID
-
-async def sudosu_ask_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    user = update.effective_user
-
-    # borrar mensaje con el ID
-    try: await msg.delete()
-    except: pass
-
-    context.user_data["root_id_input"] = (msg.text or "").strip()
-    await context.bot.send_message(chat_id=user.id, text="🔒 Ahora escribe la contraseña.")
-    return ASK_PASS
-
-async def sudosu_ask_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    user = update.effective_user
-
-    # borrar mensaje con la contraseña
-    try: await msg.delete()
-    except: pass
-
-    context.user_data["root_pass_input"] = (msg.text or "").strip()
-    await context.bot.send_message(chat_id=user.id, text="🔒 Por último, escribe el valor (ej. +5d, 1a2m, -30s).")
-    return ASK_VAL
-
-async def sudosu_ask_val(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    user = update.effective_user
-
-    # borrar mensaje con el valor (opcional)
-    try: await msg.delete()
-    except: pass
-
-    valor = (msg.text or "").strip()
-    root_id_input = context.user_data.get("root_id_input", "")
-    root_pass_input = context.user_data.get("root_pass_input", "")
-
-    # Validación contra .env
-    if root_id_input != str(ADMIN_ID) or root_pass_input != str(ROOT_PASS):
-        context.user_data.clear()
-        return ConversationHandler.END
-
-    entrada = valor.lower().replace(" ", "")
-    op = "set"
-    if entrada.startswith("+"):
-        op = "sum"; entrada = entrada[1:]
-    elif entrada.startswith("-"):
-        op = "rest"; entrada = entrada[1:]
-
-    total = convertir_a_segundos(entrada)
-    if total <= 0:
-        context.user_data.clear()
-        return ConversationHandler.END
-
-    datos = cargar_datos()
-    usuarios = datos.setdefault("usuarios", {})
-    uid = str(ADMIN_ID)
-    if uid not in usuarios:
-        usuarios[uid] = {"nombre": "AdminRoot", "tiempo": 0}
-
-    tiempo_act = int(usuarios[uid].get("tiempo", 0))
-    if op == "sum":
-        nuevo = tiempo_act + total
-    elif op == "rest":
-        nuevo = max(0, tiempo_act - total)
-    else:
-        nuevo = total
-
-    usuarios[uid]["tiempo"] = nuevo
-    guardar_datos(datos)
-
-    # Confirmación privada solo para el admin principal
-    await context.bot.send_message(
-        chat_id=int(ADMIN_ID),
-        text=f"🔒 Modo sudosu: tiempo actualizado.\nNuevo total: {formato_tiempo(nuevo)}"
-    )
-
-    context.user_data.clear()
-    return ConversationHandler.END
-
-async def sudosu_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try: await update.message.delete()
-    except: pass
-    context.user_data.clear()
-    return ConversationHandler.END
 
 # ============================================================
 # 🚀 MAIN
@@ -294,26 +162,14 @@ async def main():
     print("✅ Iniciando bot...")
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Comandos públicos/administrativos
     app.add_handler(CommandHandler("tg", tg))
-    app.add_handler(CommandHandler("lista", lista))  # solo admins (decorador)
+    app.add_handler(CommandHandler("lista", lista))
 
-    # Conversación /sudosu
-    sudosu_conv = ConversationHandler(
-        entry_points=[CommandHandler("sudosu", sudosu_start)],
-        states={
-            ASK_ID: [MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, sudosu_ask_id)],
-            ASK_PASS: [MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, sudosu_ask_pass)],
-            ASK_VAL: [MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, sudosu_ask_val)],
-        },
-        fallbacks=[CommandHandler("cancel", sudosu_cancel)],
-        conversation_timeout=60,
-    )
-    app.add_handler(sudosu_conv)
-
-    await app.run_polling()
+    print("🤖 Bot en ejecución. Esperando comandos...")
+    await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     nest_asyncio.apply()
     asyncio.run(main())
+
 
